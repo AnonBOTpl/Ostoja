@@ -20,8 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.trzezwadroga.data.entity.HungerDataPoint
 import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.ui.theme.SageGreen
@@ -98,7 +101,10 @@ fun HomeScreen(viewModel: MainViewModel) {
 }
 
 @Composable
-fun HungerChart(data: List<HungerDataPoint>) {
+fun HungerChart(
+    data: List<HungerDataPoint>,
+    onPointClick: (HungerDataPoint) -> Unit
+) {
     if (data.isEmpty()) {
         Box(modifier = Modifier.height(200.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text("Brak danych do wykresu", style = MaterialTheme.typography.bodySmall)
@@ -106,8 +112,8 @@ fun HungerChart(data: List<HungerDataPoint>) {
         return
     }
 
-    val avgHunger = data.map { it.maxHunger }.average().toFloat()
-    val minDate = data.first().dayDate
+    val avgHunger = if (data.isNotEmpty()) data.map { it.maxHunger }.average().toFloat() else 0f
+    val minDate = if (data.isNotEmpty()) data.first().dayDate else System.currentTimeMillis()
     val maxDate = System.currentTimeMillis()
     val totalDays = maxOf(1L, (maxDate - minDate) / 86400000 + 1)
 
@@ -121,6 +127,20 @@ fun HungerChart(data: List<HungerDataPoint>) {
             .fillMaxWidth()
             .height(250.dp)
             .padding(top = 16.dp, bottom = 32.dp, start = 32.dp, end = 16.dp)
+            .pointerInput(data) {
+                detectTapGestures { offset ->
+                    val width = size.width
+                    val xFactor = width / maxOf(1f, totalDays.toFloat() - 1)
+
+                    data.forEach { point ->
+                        val relativeDay = (point.dayDate - minDate) / 86400000
+                        val x = relativeDay * xFactor
+                        if (kotlin.math.abs(offset.x - x) < 40f) {
+                            onPointClick(point)
+                        }
+                    }
+                }
+            }
     ) {
         val width = size.width
         val height = size.height
@@ -148,7 +168,7 @@ fun HungerChart(data: List<HungerDataPoint>) {
             strokeWidth = 2.dp.toPx(),
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
         )
-        drawContext.canvas.nativeCanvas.drawText("Średnia", width - 80f, avgY - 10f, labelPaint)
+        drawContext.canvas.nativeCanvas.drawText("Średnia", width - 100f, avgY - 10f, labelPaint)
 
         // Main Trend Path (Bezier)
         if (data.size > 1) {
@@ -210,13 +230,56 @@ fun HungerChart(data: List<HungerDataPoint>) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChartsScreen(viewModel: MainViewModel) {
     val trendData by viewModel.hungerTrend.collectAsState()
+    val currentTimeRange by viewModel.timeRange.collectAsState()
+    var selectedPoint by remember { mutableStateOf<HungerDataPoint?>(null) }
+    val sheetState = rememberModalBottomSheetState()
+    var showSheet by remember { mutableStateOf(false) }
+
+    if (showSheet && selectedPoint != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showSheet = false },
+            sheetState = sheetState
+        ) {
+            Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+                val date = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()).format(Date(selectedPoint!!.dayDate))
+                Text(date, style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Najwyższy głód: ${selectedPoint!!.maxHunger}/10", color = SageGreen, style = MaterialTheme.typography.titleMedium)
+                if (selectedPoint!!.mood.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Zapisany nastrój: ${selectedPoint!!.mood}", style = MaterialTheme.typography.bodyLarge)
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Analityka Postępów", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        val ranges = listOf("Tydzień", "Miesiąc", "Rok")
+        ScrollableTabRow(
+            selectedTabIndex = ranges.indexOf(currentTimeRange),
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.primary,
+            edgePadding = 0.dp,
+            divider = {}
+        ) {
+            ranges.forEach { range ->
+                Tab(
+                    selected = currentTimeRange == range,
+                    onClick = { viewModel.setTimeRange(range) },
+                    text = { Text(range, fontSize = 12.sp) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -224,12 +287,51 @@ fun ChartsScreen(viewModel: MainViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("Poziom Głodu (Max/Dzień)", style = MaterialTheme.typography.titleMedium)
+                Text("Poziom Głodu (Max)", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(16.dp))
-                HungerChart(data = trendData)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Analiza długofalowa pozwala dostrzec realny spadek siły nałogu wraz z upływem czasu.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HungerChart(data = trendData, onPointClick = {
+                    selectedPoint = it
+                    showSheet = true
+                })
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (trendData.isNotEmpty()) {
+            val avg = trendData.map { it.maxHunger }.average()
+            val today = trendData.last().maxHunger
+
+            if (today < avg) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Dzisiejszy głód jest poniżej Twojej średniej (${"%.1f".format(avg)}). Robisz świetne postępy!",
+                        modifier = Modifier.padding(16.dp),
+                        color = Color(0xFF2E7D32),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
+            if (trendData.size >= 3) {
+                val last3 = trendData.takeLast(3)
+                if (last3[2].maxHunger > last3[1].maxHunger && last3[1].maxHunger > last3[0].maxHunger) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Zauważyliśmy wzrost napięcia przez ostatnie 3 dni. Zadbaj o siebie, może warto zadzwonić do kogoś bliskiego?",
+                            modifier = Modifier.padding(16.dp),
+                            color = Color(0xFFE65100),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             }
         }
     }
@@ -286,7 +388,6 @@ fun JournalListScreen(viewModel: MainViewModel, onAddNew: () -> Unit) {
 
 @Composable
 fun AddJournalEntryScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
-    val scrollState = rememberScrollState()
     var mood by remember { mutableStateOf("") }
     var hungerScale by remember { mutableStateOf(5f) }
     var gratitude by remember { mutableStateOf("") }
