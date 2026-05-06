@@ -9,7 +9,7 @@ interface AchievementDao {
     @Query("SELECT * FROM achievements")
     fun getAllAchievements(): Flow<List<Achievement>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAchievements(achievements: List<Achievement>)
 
     @Update

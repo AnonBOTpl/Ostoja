@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,13 +26,14 @@ import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.ui.theme.SageGreen
 import com.example.trzezwadroga.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.TimeUnit
 
 @Composable
 fun HomeScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val userProfile by viewModel.userProfile.collectAsState()
-    val trendData by viewModel.hungerTrend.collectAsState()
 
     Column(
         modifier = Modifier
@@ -49,6 +52,9 @@ fun HomeScreen(viewModel: MainViewModel) {
             }
 
             Text("$days dni trzeźwości", style = MaterialTheme.typography.displayMedium)
+
+            val savings = days * it.dailyExpense
+            Text("Zaoszczędzone: ${"%.2f".format(savings)} PLN", color = SageGreen, style = MaterialTheme.typography.titleLarge)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -70,10 +76,6 @@ fun HomeScreen(viewModel: MainViewModel) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Trend Poziomu Głodu", style = MaterialTheme.typography.titleMedium)
-            HungerChart(data = trendData)
-
         } ?: Button(onClick = { viewModel.updateProfile(System.currentTimeMillis()) }) {
             Text("Rozpocznij Licznik")
         }
@@ -86,6 +88,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                 }
                 context.startActivity(intent)
             },
+            modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
         ) {
             Text("SOS - Potrzebuję wsparcia")
@@ -109,7 +112,7 @@ fun HungerChart(data: List<HungerDataPoint>) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(150.dp)
+            .height(200.dp)
             .padding(vertical = 16.dp, horizontal = 24.dp)
     ) {
         val width = size.width
@@ -137,7 +140,6 @@ fun HungerChart(data: List<HungerDataPoint>) {
             style = Stroke(width = 3.dp.toPx())
         )
 
-        // Highlight today's potential point or the last recorded one
         val lastPoint = data.last()
         val lastX = ((lastPoint.dayDate - minDate) / 86400000) * xFactor
         val lastY = height - (lastPoint.maxHunger * yFactor)
@@ -147,6 +149,144 @@ fun HungerChart(data: List<HungerDataPoint>) {
             radius = 5.dp.toPx(),
             center = androidx.compose.ui.geometry.Offset(lastX, lastY)
         )
+    }
+}
+
+@Composable
+fun ChartsScreen(viewModel: MainViewModel) {
+    val trendData by viewModel.hungerTrend.collectAsState()
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Wykresy Postępu", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Najwyższy poziom głodu (1-10)", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                HungerChart(data = trendData)
+                Text("Oś X: Dni trzeźwości. Linia pokazuje trend intensywności głodu.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+fun JournalListScreen(viewModel: MainViewModel, onAddNew: () -> Unit) {
+    val entries by viewModel.journalEntries.collectAsState()
+    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddNew) {
+                Icon(Icons.Default.Add, contentDescription = "Nowy wpis")
+            }
+        }
+    ) { padding ->
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            item { Text("Twój Dziennik", style = MaterialTheme.typography.headlineMedium) }
+            items(entries) { entry ->
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(dateFormat.format(Date(entry.date)), style = MaterialTheme.typography.labelSmall)
+                            Text("Głód: ${entry.hungerLevel}/10", color = SageGreen, style = MaterialTheme.typography.labelLarge)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(entry.mood, style = MaterialTheme.typography.titleMedium)
+                        if (entry.gratitude.isNotEmpty()) {
+                            Text("Wdzięczność: ${entry.gratitude}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        if (entry.relapseSignals.isNotEmpty()) {
+                            Text("Sygnały: ${entry.relapseSignals}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+            if (entries.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Brak wpisów. Zacznij pisać już dziś!")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddJournalEntryScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
+    var mood by remember { mutableStateOf("") }
+    var hungerScale by remember { mutableStateOf(5f) }
+    var gratitude by remember { mutableStateOf("") }
+    var triggers by remember { mutableStateOf("") }
+    var tomorrowGoal by remember { mutableStateOf("") }
+
+    val allSignals = listOf(
+        "Napięcie i frustracja", "Problemy ze snem", "Nawrót do starych znajomości",
+        "Unikanie spotkań terapeutycznych", "Przekonanie o wyleczeniu", "Huśtawki nastrojów",
+        "Brak dbałości o higienę/wygląd", "Zmiana nawyków żywieniowych", "Izolacja społeczna",
+        "Szukanie winy w innych", "Defetyzm i użalanie się", "Nierealne plany",
+        "Marzenia o piciu kontrolowanym", "Agresywne zachowania", "Nuda i apatia",
+        "Pomijanie posiłków", "Zaniedbywanie hobby", "Kłamstwa i sekrety",
+        "Euforia bez powodu", "Wracanie do miejsc picia", "Odstawienie leków/witamin"
+    )
+    val selectedSignals = remember { mutableStateMapOf<String, Boolean>() }
+
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text("Nowy Wpis", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextField(value = mood, onValueChange = { mood = it }, label = { Text("Jak się dziś czujesz?") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(value = gratitude, onValueChange = { gratitude = it }, label = { Text("Za co jesteś dziś wdzięczny?") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(value = triggers, onValueChange = { triggers = it }, label = { Text("Co Cię dziś kusiło? (Triggery)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(value = tomorrowGoal, onValueChange = { tomorrowGoal = it }, label = { Text("Twój cel na jutro") }, modifier = Modifier.fillMaxWidth())
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Poziom głodu: ${hungerScale.toInt()}")
+            Slider(value = hungerScale, onValueChange = { hungerScale = it }, valueRange = 1f..10f, steps = 8)
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Sygnały ostrzegawcze:", style = MaterialTheme.typography.titleMedium)
+        }
+
+        items(allSignals) { signal ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = selectedSignals[signal] ?: false, onCheckedChange = { selectedSignals[signal] = it })
+                Text(signal)
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = {
+                    val entry = JournalEntry(
+                        mood = mood,
+                        hungerLevel = hungerScale.toInt(),
+                        note = "",
+                        relapseSignals = selectedSignals.filter { it.value }.keys.joinToString(", "),
+                        gratitude = gratitude,
+                        triggers = triggers,
+                        tomorrowGoal = tomorrowGoal
+                    )
+                    viewModel.addJournalEntry(entry)
+                    onNavigateBack()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Zapisz wpis")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
+                Text("Anuluj")
+            }
+        }
     }
 }
 
@@ -171,93 +311,6 @@ fun AchievementsScreen(viewModel: MainViewModel) {
                         Text(achievement.title, style = MaterialTheme.typography.titleMedium)
                         Text(achievement.description, style = MaterialTheme.typography.bodySmall)
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun JournalScreen(viewModel: MainViewModel) {
-    var mood by remember { mutableStateOf("") }
-    var hungerScale by remember { mutableStateOf(5f) }
-    val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    val allSignals = listOf(
-        "Napięcie i frustracja", "Problemy ze snem", "Nawrót do starych znajomości",
-        "Unikanie spotkań terapeutycznych", "Przekonanie o wyleczeniu", "Huśtawki nastrojów",
-        "Brak dbałości o higienę/wygląd", "Zmiana nawyków żywieniowych", "Izolacja społeczna",
-        "Szukanie winy w innych", "Defetyzm i użalanie się", "Nierealne plany",
-        "Marzenia o piciu kontrolowanym", "Agresywne zachowania", "Nuda i apatia",
-        "Pomijanie posiłków", "Zaniedbywanie hobby", "Kłamstwa i sekrety",
-        "Euforia bez powodu", "Wracanie do miejsc picia", "Odstawienie leków/witamin"
-    )
-
-    val selectedSignals = remember { mutableStateMapOf<String, Boolean>() }
-
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            item {
-                Text("Dzienniczek", style = MaterialTheme.typography.headlineMedium)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextField(
-                    value = mood,
-                    onValueChange = { mood = it },
-                    label = { Text("Jak się dziś czujesz?") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Poziom głodu: ${hungerScale.toInt()}")
-                Slider(
-                    value = hungerScale,
-                    onValueChange = { hungerScale = it },
-                    valueRange = 1f..10f,
-                    steps = 8
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Sygnały ostrzegawcze (zaznacz jeśli wystąpiły):", style = MaterialTheme.typography.titleMedium)
-            }
-
-            items(allSignals) { signal ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = selectedSignals[signal] ?: false,
-                        onCheckedChange = { selectedSignals[signal] = it }
-                    )
-                    Text(signal)
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        val entry = JournalEntry(
-                            date = System.currentTimeMillis(),
-                            mood = mood,
-                            hungerLevel = hungerScale.toInt(),
-                            note = "",
-                            relapseSignals = selectedSignals.filter { it.value }.keys.joinToString(", ")
-                        )
-                        viewModel.addJournalEntry(entry)
-
-                        mood = ""
-                        hungerScale = 5f
-                        selectedSignals.clear()
-
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Wpis został zapisany")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Zapisz wpis")
                 }
             }
         }

@@ -36,7 +36,7 @@ class MainActivity : FragmentActivity() {
         val db = Room.databaseBuilder(
             applicationContext,
             AppDatabase::class.java, "trzezwa-droga-db"
-        ).build()
+        ).fallbackToDestructiveMigration().build()
         val repository = AppRepository(db.achievementDao(), db.journalDao(), db.userProfileDao())
         viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -105,7 +105,8 @@ fun MainScreen(viewModel: MainViewModel) {
             NavigationBar {
                 val items = listOf(
                     Triple("home", "Home", "🏠"),
-                    Triple("journal", "Dziennik", "📔"),
+                    Triple("journal_list", "Dziennik", "📔"),
+                    Triple("charts", "Wykresy", "📊"),
                     Triple("achievements", "Nagrody", "🏆"),
                     Triple("halt", "HALT", "🆘")
                 )
@@ -130,7 +131,13 @@ fun MainScreen(viewModel: MainViewModel) {
     ) { innerPadding ->
         NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding)) {
             composable("home") { HomeScreen(viewModel) }
-            composable("journal") { JournalScreen(viewModel) }
+            composable("journal_list") {
+                JournalListScreen(viewModel, onAddNew = { navController.navigate("journal_add") })
+            }
+            composable("journal_add") {
+                AddJournalEntryScreen(viewModel, onNavigateBack = { navController.popBackStack() })
+            }
+            composable("charts") { ChartsScreen(viewModel) }
             composable("achievements") { AchievementsScreen(viewModel) }
             composable("halt") { HaltScreen(viewModel) }
         }
