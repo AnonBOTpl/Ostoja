@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,8 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -99,56 +100,113 @@ fun HomeScreen(viewModel: MainViewModel) {
 @Composable
 fun HungerChart(data: List<HungerDataPoint>) {
     if (data.isEmpty()) {
-        Box(modifier = Modifier.height(150.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.height(200.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text("Brak danych do wykresu", style = MaterialTheme.typography.bodySmall)
         }
         return
     }
 
+    val avgHunger = data.map { it.maxHunger }.average().toFloat()
     val minDate = data.first().dayDate
     val maxDate = System.currentTimeMillis()
-    val totalDays = maxOf(1L, (maxDate - minDate) / 86400000)
+    val totalDays = maxOf(1L, (maxDate - minDate) / 86400000 + 1)
+
+    val labelPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.GRAY
+        textSize = 24f
+    }
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
-            .padding(vertical = 16.dp, horizontal = 24.dp)
+            .height(250.dp)
+            .padding(top = 16.dp, bottom = 32.dp, start = 32.dp, end = 16.dp)
     ) {
         val width = size.width
         val height = size.height
-
-        val xFactor = width / totalDays.toFloat()
+        val xFactor = width / maxOf(1f, totalDays.toFloat() - 1)
         val yFactor = height / 10f
 
-        val path = Path()
-        data.forEachIndexed { index, point ->
-            val relativeDay = (point.dayDate - minDate) / 86400000
-            val x = relativeDay * xFactor
-            val y = height - (point.maxHunger * yFactor)
-
-            if (index == 0) {
-                path.moveTo(x, y)
-            } else {
-                path.lineTo(x, y)
-            }
+        // Grid lines and Y labels
+        listOf(1, 5, 10).forEach { label ->
+            val y = height - (label * yFactor)
+            drawLine(
+                color = Color.Gray.copy(alpha = 0.2f),
+                start = androidx.compose.ui.geometry.Offset(0f, y),
+                end = androidx.compose.ui.geometry.Offset(width, y),
+                strokeWidth = 1.dp.toPx()
+            )
+            drawContext.canvas.nativeCanvas.drawText(label.toString(), -30f, y + 10f, labelPaint)
         }
 
-        drawPath(
-            path = path,
-            color = SageGreen,
-            style = Stroke(width = 3.dp.toPx())
+        // Average line
+        val avgY = height - (avgHunger * yFactor)
+        drawLine(
+            color = Color.Red.copy(alpha = 0.4f),
+            start = androidx.compose.ui.geometry.Offset(0f, avgY),
+            end = androidx.compose.ui.geometry.Offset(width, avgY),
+            strokeWidth = 2.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
         )
+        drawContext.canvas.nativeCanvas.drawText("Średnia", width - 80f, avgY - 10f, labelPaint)
 
+        // Main Trend Path (Bezier)
+        if (data.size > 1) {
+            val mainPath = Path()
+            val fillPath = Path()
+
+            data.forEachIndexed { index, point ->
+                val relativeDay = (point.dayDate - minDate) / 86400000
+                val x = relativeDay * xFactor
+                val y = height - (point.maxHunger * yFactor)
+
+                if (index == 0) {
+                    mainPath.moveTo(x, y)
+                    fillPath.moveTo(x, height)
+                    fillPath.lineTo(x, y)
+                } else {
+                    val prevPoint = data[index - 1]
+                    val prevRelativeDay = (prevPoint.dayDate - minDate) / 86400000
+                    val prevX = prevRelativeDay * xFactor
+                    val prevY = height - (prevPoint.maxHunger * yFactor)
+
+                    mainPath.cubicTo(
+                        prevX + (x - prevX) / 2, prevY,
+                        prevX + (x - prevX) / 2, y,
+                        x, y
+                    )
+                    fillPath.cubicTo(
+                        prevX + (x - prevX) / 2, prevY,
+                        prevX + (x - prevX) / 2, y,
+                        x, y
+                    )
+                }
+
+                if (index == data.size - 1) {
+                    fillPath.lineTo(x, height)
+                    fillPath.close()
+                }
+            }
+
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(SageGreen.copy(alpha = 0.3f), Color.Transparent)
+                )
+            )
+            drawPath(
+                path = mainPath,
+                color = SageGreen,
+                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+            )
+        }
+
+        // Today highlight
         val lastPoint = data.last()
         val lastX = ((lastPoint.dayDate - minDate) / 86400000) * xFactor
         val lastY = height - (lastPoint.maxHunger * yFactor)
-
-        drawCircle(
-            color = SageGreen,
-            radius = 5.dp.toPx(),
-            center = androidx.compose.ui.geometry.Offset(lastX, lastY)
-        )
+        drawCircle(color = SageGreen, radius = 6.dp.toPx(), center = androidx.compose.ui.geometry.Offset(lastX, lastY))
+        drawCircle(color = Color.White, radius = 3.dp.toPx(), center = androidx.compose.ui.geometry.Offset(lastX, lastY))
     }
 }
 
@@ -157,16 +215,21 @@ fun ChartsScreen(viewModel: MainViewModel) {
     val trendData by viewModel.hungerTrend.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Wykresy Postępu", style = MaterialTheme.typography.headlineMedium)
+        Text("Analityka Postępów", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(24.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Najwyższy poziom głodu (1-10)", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text("Poziom Głodu (Max/Dzień)", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(16.dp))
                 HungerChart(data = trendData)
-                Text("Oś X: Dni trzeźwości. Linia pokazuje trend intensywności głodu.",
-                    style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Analiza długofalowa pozwala dostrzec realny spadek siły nałogu wraz z upływem czasu.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -184,10 +247,16 @@ fun JournalListScreen(viewModel: MainViewModel, onAddNew: () -> Unit) {
             }
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
             item { Text("Twój Dziennik", style = MaterialTheme.typography.headlineMedium) }
             items(entries) { entry ->
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+            ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(dateFormat.format(Date(entry.date)), style = MaterialTheme.typography.labelSmall)
@@ -217,6 +286,7 @@ fun JournalListScreen(viewModel: MainViewModel, onAddNew: () -> Unit) {
 
 @Composable
 fun AddJournalEntryScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
+    val scrollState = rememberScrollState()
     var mood by remember { mutableStateOf("") }
     var hungerScale by remember { mutableStateOf(5f) }
     var gratitude by remember { mutableStateOf("") }
@@ -234,59 +304,62 @@ fun AddJournalEntryScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) 
     )
     val selectedSignals = remember { mutableStateMapOf<String, Boolean>() }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item {
-            Text("Nowy Wpis", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        Text("Nowy Wpis", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(24.dp))
 
-            TextField(value = mood, onValueChange = { mood = it }, label = { Text("Jak się dziś czujesz?") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            TextField(value = gratitude, onValueChange = { gratitude = it }, label = { Text("Za co jesteś dziś wdzięczny?") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            TextField(value = triggers, onValueChange = { triggers = it }, label = { Text("Co Cię dziś kusiło? (Triggery)") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            TextField(value = tomorrowGoal, onValueChange = { tomorrowGoal = it }, label = { Text("Twój cel na jutro") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = mood, onValueChange = { mood = it }, label = { Text("Jak się dziś czujesz?") }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(value = gratitude, onValueChange = { gratitude = it }, label = { Text("Za co jesteś dziś wdzięczny?") }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(value = triggers, onValueChange = { triggers = it }, label = { Text("Co Cię dziś kusiło? (Triggery)") }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(value = tomorrowGoal, onValueChange = { tomorrowGoal = it }, label = { Text("Twój cel na jutro") }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Poziom głodu: ${hungerScale.toInt()}")
-            Slider(value = hungerScale, onValueChange = { hungerScale = it }, valueRange = 1f..10f, steps = 8)
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Poziom głodu: ${hungerScale.toInt()}", style = MaterialTheme.typography.titleMedium)
+        Slider(value = hungerScale, onValueChange = { hungerScale = it }, valueRange = 1f..10f, steps = 8)
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Sygnały ostrzegawcze:", style = MaterialTheme.typography.titleMedium)
-        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Sygnały ostrzegawcze:", style = MaterialTheme.typography.titleMedium)
 
-        items(allSignals) { signal ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        allSignals.forEach { signal ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                 Checkbox(checked = selectedSignals[signal] ?: false, onCheckedChange = { selectedSignals[signal] = it })
-                Text(signal)
+                Text(signal, style = MaterialTheme.typography.bodyMedium)
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = {
-                    val entry = JournalEntry(
-                        mood = mood,
-                        hungerLevel = hungerScale.toInt(),
-                        note = "",
-                        relapseSignals = selectedSignals.filter { it.value }.keys.joinToString(", "),
-                        gratitude = gratitude,
-                        triggers = triggers,
-                        tomorrowGoal = tomorrowGoal
-                    )
-                    viewModel.addJournalEntry(entry)
-                    onNavigateBack()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Zapisz wpis")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
-                Text("Anuluj")
-            }
+        Spacer(modifier = Modifier.height(32.dp))
+        Button(
+            onClick = {
+                val entry = JournalEntry(
+                    mood = mood,
+                    hungerLevel = hungerScale.toInt(),
+                    note = "",
+                    relapseSignals = selectedSignals.filter { it.value }.keys.joinToString(", "),
+                    gratitude = gratitude,
+                    triggers = triggers,
+                    tomorrowGoal = tomorrowGoal
+                )
+                viewModel.addJournalEntry(entry)
+                onNavigateBack()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+        ) {
+            Text("Zapisz wpis")
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
+            Text("Anuluj")
+        }
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -294,14 +367,21 @@ fun AddJournalEntryScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) 
 fun AchievementsScreen(viewModel: MainViewModel) {
     val achievements by viewModel.achievements.collectAsState()
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item { Text("Pokój Trofeów", style = MaterialTheme.typography.headlineMedium) }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Text("Pokój Trofeów", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(16.dp))
+        }
         items(achievements) { achievement ->
             Card(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (achievement.isUnlocked) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = if (achievement.isUnlocked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
             ) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
