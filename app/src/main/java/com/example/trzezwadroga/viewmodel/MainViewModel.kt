@@ -7,11 +7,9 @@ import com.example.trzezwadroga.data.entity.HungerDataPoint
 import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.data.entity.UserProfile
 import com.example.trzezwadroga.repository.AppRepository
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 class MainViewModel(private val repository: AppRepository) : ViewModel() {
 
@@ -27,11 +25,44 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
         initialValue = emptyList()
     )
 
-    val hungerTrend: StateFlow<List<HungerDataPoint>> = repository.hungerTrend.stateIn(
+    private val _timeRange = MutableStateFlow("Tydzień")
+    val timeRange: StateFlow<String> = _timeRange
+
+    val hungerTrend: StateFlow<List<HungerDataPoint>> = combine(
+        repository.hungerTrend,
+        _timeRange
+    ) { trend, range ->
+        val now = System.currentTimeMillis()
+        val filtered = when (range) {
+            "Tydzień" -> trend.filter { it.dayDate >= now - 7 * 86400000L }
+            "Miesiąc" -> trend.filter { it.dayDate >= now - 30 * 86400000L }
+            "Rok" -> trend.filter { it.dayDate >= now - 365 * 86400000L }
+            else -> trend
+        }
+
+        if (range == "Rok") {
+            // Aggregate by month for the year view
+            filtered.groupBy {
+                val cal = Calendar.getInstance().apply { timeInMillis = it.dayDate }
+                "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.MONTH)}"
+            }.map { (_, points) ->
+                HungerDataPoint(
+                    dayDate = points.first().dayDate,
+                    maxHunger = points.map { it.maxHunger }.average().toInt()
+                )
+            }.sortedBy { it.dayDate }
+        } else {
+            filtered
+        }
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    fun setTimeRange(range: String) {
+        _timeRange.value = range
+    }
 
     val journalEntries: StateFlow<List<JournalEntry>> = repository.allJournalEntries.stateIn(
         scope = viewModelScope,
