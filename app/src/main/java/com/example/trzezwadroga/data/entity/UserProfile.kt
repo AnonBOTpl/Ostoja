@@ -11,5 +11,6 @@ data class UserProfile(
     val dailyExpense: Double = 30.0, // Default cost of addiction per day in PLN
     val motivationText: String = "",
     val motivationImageUri: String = "",
-    val sosPhoneNumber: String = "112"
+    val sosPhoneNumber: String = "112",
+    val haltCount: Int = 0
 )
