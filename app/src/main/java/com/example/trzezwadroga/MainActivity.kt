@@ -1,5 +1,6 @@
 package com.example.trzezwadroga
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.biometric.BiometricPrompt
@@ -23,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.room.Room
 import com.example.trzezwadroga.data.database.AppDatabase
 import com.example.trzezwadroga.repository.AppRepository
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.trzezwadroga.ui.theme.TrzeźwaDrogaTheme
 import com.example.trzezwadroga.viewmodel.MainViewModel
@@ -38,7 +40,7 @@ class MainActivity : FragmentActivity() {
             applicationContext,
             AppDatabase::class.java, "trzezwa-droga-db"
         ).fallbackToDestructiveMigration().build()
-        val repository = AppRepository(db.achievementDao(), db.journalDao(), db.userProfileDao())
+        val repository = AppRepository(db.achievementDao(), db.journalDao(), db.userProfileDao(), db.dailyTaskDao())
         viewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return MainViewModel(repository) as T
@@ -113,7 +115,7 @@ fun MainScreen(viewModel: MainViewModel) {
                     Triple("journal_list", "Dziennik", "📔"),
                     Triple("charts", "Wykresy", "📊"),
                     Triple("achievements", "Nagrody", "🏆"),
-                    Triple("halt", "HALT", "🆘")
+                    Triple("halt", "Plan 24h", "📅")
                 )
                 items.forEach { (route, label, icon) ->
                     NavigationBarItem(
@@ -143,8 +145,25 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         }
     ) { innerPadding ->
-        NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding)) {
-            composable("home") { HomeScreen(viewModel) }
+        val prefs = LocalContext.current.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val isFirstRun = remember { mutableStateOf(prefs.getBoolean("is_first_run", true)) }
+
+        NavHost(
+            navController,
+            startDestination = if (isFirstRun.value) "setup" else "home",
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable("setup") {
+                SetupWizardScreen(onComplete = {
+                    prefs.edit().putBoolean("is_first_run", false).apply()
+                    isFirstRun.value = false
+                    navController.navigate("home") {
+                        popUpTo("setup") { inclusive = true }
+                    }
+                }, viewModel = viewModel)
+            }
+            composable("home") { HomeScreen(viewModel, onNavigateToSettings = { navController.navigate("settings") }) }
+            composable("settings") { SettingsScreen(viewModel, onNavigateBack = { navController.popBackStack() }) }
             composable("journal_list") {
                 JournalListScreen(viewModel, onAddNew = { navController.navigate("journal_add") })
             }
@@ -153,7 +172,7 @@ fun MainScreen(viewModel: MainViewModel) {
             }
             composable("charts") { ChartsScreen(viewModel) }
             composable("achievements") { AchievementsScreen(viewModel) }
-            composable("halt") { HaltScreen(viewModel) }
+            composable("halt") { Plan24hScreen(viewModel) }
         }
     }
 }

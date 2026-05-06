@@ -12,7 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,8 +25,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.trzezwadroga.data.entity.DailyTask
 import com.example.trzezwadroga.data.entity.HungerDataPoint
 import com.example.trzezwadroga.data.entity.JournalEntry
+import com.example.trzezwadroga.data.entity.UserProfile
 import com.example.trzezwadroga.ui.theme.SageGreen
 import com.example.trzezwadroga.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -35,7 +37,53 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun HomeScreen(viewModel: MainViewModel) {
+fun SetupWizardScreen(viewModel: MainViewModel, onComplete: () -> Unit) {
+    var step by remember { mutableStateOf(1) }
+    var dailyExpense by remember { mutableStateOf("30") }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        when (step) {
+            1 -> {
+                Text("Witaj w Trzeźwej Drodze", style = MaterialTheme.typography.headlineMedium)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Kiedy zacząłeś swoją przygodę z trzeźwością?", style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = { step = 2 }) { Text("Dziś (Dalej)") }
+            }
+            2 -> {
+                Text("Finanse i motywacja", style = MaterialTheme.typography.headlineMedium)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Ile średnio wydawałeś dziennie na alkohol?", style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(24.dp))
+                OutlinedTextField(
+                    value = dailyExpense,
+                    onValueChange = { dailyExpense = it },
+                    label = { Text("Kwota w PLN") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = { step = 3 }) { Text("Dalej") }
+            }
+            3 -> {
+                Text("Zasada 24 Godzin", style = MaterialTheme.typography.headlineMedium)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Nie pijemy tylko dzisiaj. Skup się na najbliższych 24 godzinach i swoim planie dnia.", style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(onClick = {
+                    viewModel.updateProfile(System.currentTimeMillis(), dailyExpense.toDoubleOrNull() ?: 30.0)
+                    onComplete()
+                }) { Text("Rozpocznij") }
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeScreen(viewModel: MainViewModel, onNavigateToSettings: () -> Unit) {
     val context = LocalContext.current
     val userProfile by viewModel.userProfile.collectAsState()
 
@@ -45,7 +93,18 @@ fun HomeScreen(viewModel: MainViewModel) {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Twoja Droga", style = MaterialTheme.typography.headlineMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(modifier = Modifier.width(48.dp))
+            Text("Twoja Droga", style = MaterialTheme.typography.headlineMedium)
+            IconButton(onClick = onNavigateToSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "Ustawienia")
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         userProfile?.let {
@@ -58,7 +117,7 @@ fun HomeScreen(viewModel: MainViewModel) {
             Text("$days dni trzeźwości", style = MaterialTheme.typography.displayMedium)
 
             val savings = days * it.dailyExpense
-            Text("Zaoszczędzone: ${"%.2f".format(savings)} PLN", color = SageGreen, style = MaterialTheme.typography.titleLarge)
+            Text("Zaoszczędzone pieniądze: ${"%.2f".format(savings)} PLN", color = SageGreen, style = MaterialTheme.typography.titleLarge)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -96,6 +155,157 @@ fun HomeScreen(viewModel: MainViewModel) {
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
         ) {
             Text("SOS - Potrzebuję wsparcia")
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
+    val profile by viewModel.userProfile.collectAsState()
+    var expense by remember { mutableStateOf(profile?.dailyExpense?.toString() ?: "30") }
+    var showResetDialog by remember { mutableStateOf(false) }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Resetuj wszystko") },
+            text = { Text("Czy na pewno chcesz usunąć wszystkie dane? Twoje postępy, wpisy w dzienniku i plan dnia zostaną bezpowrotnie skasowane.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.resetAllData()
+                    showResetDialog = false
+                    onNavigateBack()
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
+                    Text("Tak, usuń wszystko")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Anuluj") } }
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+        Text("Ustawienia", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text("Dzienny koszt nałogu (PLN)", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = expense,
+            onValueChange = { expense = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = {
+            profile?.let { viewModel.updateProfile(it.sobrietyStartDate, expense.toDoubleOrNull() ?: 30.0) }
+        }) { Text("Zapisz zmiany") }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = { showResetDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+        ) {
+            Text("RESETUJ WSZYSTKO")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
+            Text("Powrót")
+        }
+    }
+}
+
+@Composable
+fun Plan24hScreen(viewModel: MainViewModel) {
+    var showBreathing by remember { mutableStateOf(false) }
+    val tasks by viewModel.dailyTasks.collectAsState()
+    var newTaskTitle by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    if (showBreathing) {
+        BreathingDialog(
+            onDismiss = { showBreathing = false },
+            onComplete = {
+                viewModel.onBreathingExerciseCompleted()
+                showBreathing = false
+            }
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Plan 24h", style = MaterialTheme.typography.headlineMedium)
+        Text("Tylko dzisiaj nie pijemy i realizujemy cele.", style = MaterialTheme.typography.bodySmall)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = newTaskTitle,
+                onValueChange = { newTaskTitle = it },
+                modifier = Modifier.weight(1f),
+                label = { Text("Dodaj zadanie") }
+            )
+            IconButton(onClick = {
+                if (newTaskTitle.isNotBlank()) {
+                    viewModel.addTask(newTaskTitle)
+                    newTaskTitle = ""
+                }
+            }) {
+                Icon(Icons.Default.Add, contentDescription = "Dodaj")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(tasks) { task ->
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(task.title, modifier = Modifier.weight(1f),
+                            style = if (task.isCompleted == true) MaterialTheme.typography.bodyLarge.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough)
+                            else MaterialTheme.typography.bodyLarge)
+
+                        IconButton(onClick = { viewModel.toggleTask(task, true) }) {
+                            Icon(Icons.Default.Check, contentDescription = "Wykonane", tint = if (task.isCompleted == true) Color.Green else Color.Gray)
+                        }
+                        IconButton(onClick = { viewModel.toggleTask(task, false) }) {
+                            Icon(Icons.Default.Close, contentDescription = "Niewykonane", tint = if (task.isCompleted == false) Color.Red else Color.Gray)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = { showBreathing = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Technika Oddechowa (Kryzys)")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = {
+                viewModel.onHaltTestCompleted()
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    data = Uri.parse("tel:112")
+                }
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+        ) {
+            Text("SOS - Kontakt z opiekunem")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(
+            onClick = { viewModel.resetDailyPlan() },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Wyczyść plan dnia")
         }
     }
 }
@@ -494,62 +704,6 @@ fun AchievementsScreen(viewModel: MainViewModel) {
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun HaltScreen(viewModel: MainViewModel) {
-    var showBreathing by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    if (showBreathing) {
-        BreathingDialog(
-            onDismiss = { showBreathing = false },
-            onComplete = {
-                viewModel.onBreathingExerciseCompleted()
-                showBreathing = false
-            }
-        )
-    }
-
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Autodiagnoza HALT", style = MaterialTheme.typography.headlineMedium)
-        Text("Sprawdź swoje podstawowe potrzeby", style = MaterialTheme.typography.bodyMedium)
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HaltItem("Hungry (Głodny)", "Czy jadłeś coś pożywnego w ciągu ostatnich 4 godzin?")
-        HaltItem("Angry (Zły)", "Czy czujesz narastającą irytację lub gniew?")
-        HaltItem("Lonely (Samotny)", "Czy czujesz potrzebę rozmowy z kimś bliskim?")
-        HaltItem("Tired (Zmęczony)", "Czy Twój organizm potrzebuje odpoczynku lub snu?")
-
-        Spacer(modifier = Modifier.height(32.dp))
-        Text("Jeśli na którekolwiek pytanie odpowiedziałeś TAK, zatrzymaj się i zadbaj o tę potrzebę przed podjęciem jakiejkolwiek ważnej decyzji.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { showBreathing = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-        ) {
-            Text("Technika Oddechowa (Kryzys)")
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-        Button(
-            onClick = {
-                viewModel.onHaltTestCompleted()
-                val intent = Intent(Intent.ACTION_DIAL).apply {
-                    data = Uri.parse("tel:112")
-                }
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-        ) {
-            Text("SOS - Kontakt z opiekunem")
         }
     }
 }
