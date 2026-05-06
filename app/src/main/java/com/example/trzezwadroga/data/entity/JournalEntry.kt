@@ -10,5 +10,8 @@ data class JournalEntry(
     val mood: String,
     val hungerLevel: Int, // 1-10
     val note: String,
-    val relapseSignals: String // Stored as comma-separated values or JSON
+    val relapseSignals: String,
+    val gratitude: String = "",
+    val triggers: String = "",
+    val tomorrowGoal: String = ""
 )

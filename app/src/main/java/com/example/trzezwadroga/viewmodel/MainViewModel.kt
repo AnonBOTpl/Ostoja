@@ -83,10 +83,14 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
         }
     }
 
+    private var haltTestCount = 0
     fun onHaltTestCompleted() {
         viewModelScope.launch {
-            achievements.value.find { it.id == "A2" && !it.isUnlocked }?.let {
-                repository.updateAchievement(it.copy(isUnlocked = true))
+            haltTestCount++
+            if (haltTestCount >= 10) {
+                achievements.value.find { it.id == "A2" && !it.isUnlocked }?.let {
+                    repository.updateAchievement(it.copy(isUnlocked = true))
+                }
             }
         }
     }

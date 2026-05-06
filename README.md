@@ -14,11 +14,15 @@ Naszą misją jest wspieranie procesu zdrowienia poprzez budowanie samoświadomo
 
 ### 2. Zaawansowany Dzienniczek
 - **Monitorowanie uczuć:** Codzienna rejestracja stanu emocjonalnego.
+- **Wdzięczność i Cele:** Specjalne sekcje na codzienne praktykowanie wdzięczności oraz wyznaczanie celów na kolejny dzień.
 - **Skala głodu:** Monitoruj intensywność głodu nałogowego (1-10).
 - **Sygnały ostrzegawcze:** Analizuj 21 kluczowych sygnałów nawrotu, aby zareagować, zanim będzie za późno.
-- **Analiza Długofalowa (Wykres):** Wizualizacja trendu najwyższego poziomu głodu każdego dnia, pomagająca dostrzec realny spadek siły nałogu wraz z upływem czasu.
+- **Historia Wpisów:** Przeglądaj swoje archiwalne zapisy, aby śledzić proces zmiany.
 
-### 3. System Nagród (Pokój Trofeów)
+### 3. Moduł Wykresów (Analityka)
+- **Analiza Długofalowa:** Wizualizacja trendu najwyższego poziomu głodu każdego dnia na minimalistycznym wykresie w kolorze Sage Green. Pomaga dostrzec realny spadek siły nałogu wraz z upływem czasu.
+
+### 4. System Nagród (Pokój Trofeów)
 - **Kamienie Milowe:** Wirtualne medale za utrzymanie trzeźwości (24h, 3 dni, tydzień, miesiąc, 100 dni, rok).
 - **Odznaki Aktywności:** Nagradzamy nie tylko za czas, ale i za pracę nad sobą:
     - **Dziennikarz:** Za regularne wpisy w dzienniczku.
