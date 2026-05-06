@@ -82,7 +82,27 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
 
     fun updateProfile(startDate: Long, dailyExpense: Double = 30.0) {
         viewModelScope.launch {
-            repository.upsertProfile(UserProfile(sobrietyStartDate = startDate, dailyExpense = dailyExpense))
+            val current = userProfile.value
+            repository.upsertProfile(
+                current?.copy(sobrietyStartDate = startDate, dailyExpense = dailyExpense)
+                ?: UserProfile(sobrietyStartDate = startDate, dailyExpense = dailyExpense)
+            )
+        }
+    }
+
+    fun updateMotivation(text: String, imageUri: String) {
+        viewModelScope.launch {
+            userProfile.value?.let {
+                repository.upsertProfile(it.copy(motivationText = text, motivationImageUri = imageUri))
+            }
+        }
+    }
+
+    fun updateSosNumber(number: String) {
+        viewModelScope.launch {
+            userProfile.value?.let {
+                repository.upsertProfile(it.copy(sosPhoneNumber = number))
+            }
         }
     }
 
@@ -144,17 +164,6 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
         }
     }
 
-    private var haltTestCount = 0
-    fun onHaltTestCompleted() {
-        viewModelScope.launch {
-            haltTestCount++
-            if (haltTestCount >= 10) {
-                achievements.value.find { it.id == "A2" && !it.isUnlocked }?.let {
-                    repository.updateAchievement(it.copy(isUnlocked = true))
-                }
-            }
-        }
-    }
 
     fun onBreathingExerciseCompleted() {
         viewModelScope.launch {
@@ -174,7 +183,6 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
                 Achievement("S5", "100 dni", "Trzycyfrowe zwycięstwo!", category = "SOBRIETY"),
                 Achievement("S6", "1 rok", "Rok pełen świadomych wyborów", category = "SOBRIETY"),
                 Achievement("A1", "Dziennikarz", "7 dni regularnych wpisów", category = "ACTIVITY"),
-                Achievement("A2", "Świadomy", "Wykonanie 10 testów HALT", category = "ACTIVITY"),
                 Achievement("A3", "Zwycięzca", "Użycie techniki oddechowej", category = "ACTIVITY")
             )
             repository.initAchievements(defaults)
