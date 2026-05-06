@@ -3,13 +3,14 @@ package com.example.trzezwadroga
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.biometric.BiometricPrompt
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -101,8 +102,12 @@ fun MainScreen(viewModel: MainViewModel) {
     val currentDestination = navBackStackEntry?.destination
 
     Scaffold(
+        modifier = Modifier.systemBarsPadding(),
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.background,
+                tonalElevation = 8.dp
+            ) {
                 val items = listOf(
                     Triple("home", "Home", "🏠"),
                     Triple("journal_list", "Dziennik", "📔"),
@@ -122,8 +127,17 @@ fun MainScreen(viewModel: MainViewModel) {
                                 restoreState = true
                             }
                         },
-                        icon = { Text(icon) },
-                        label = { Text(label) }
+                        icon = { Text(icon, fontSize = 20.sp) },
+                        label = {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Visible,
+                                softWrap = false
+                            )
+                        },
+                        alwaysShowLabel = true
                     )
                 }
             }
