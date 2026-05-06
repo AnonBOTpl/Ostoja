@@ -130,9 +130,9 @@ fun MainScreen(viewModel: MainViewModel) {
     ) { innerPadding ->
         NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding)) {
             composable("home") { HomeScreen(viewModel) }
-            composable("journal") { JournalScreen() }
+            composable("journal") { JournalScreen(viewModel) }
             composable("achievements") { AchievementsScreen(viewModel) }
-            composable("halt") { HaltScreen() }
+            composable("halt") { HaltScreen(viewModel) }
         }
     }
 }

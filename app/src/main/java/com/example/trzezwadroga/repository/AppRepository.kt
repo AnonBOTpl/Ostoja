@@ -4,6 +4,7 @@ import com.example.trzezwadroga.data.dao.AchievementDao
 import com.example.trzezwadroga.data.dao.JournalDao
 import com.example.trzezwadroga.data.dao.UserProfileDao
 import com.example.trzezwadroga.data.entity.Achievement
+import com.example.trzezwadroga.data.entity.HungerDataPoint
 import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.data.entity.UserProfile
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,7 @@ class AppRepository(
     val allAchievements: Flow<List<Achievement>> = achievementDao.getAllAchievements()
     val allJournalEntries: Flow<List<JournalEntry>> = journalDao.getAllEntries()
     val userProfile: Flow<UserProfile?> = userProfileDao.getUserProfile()
+    val hungerTrend: Flow<List<HungerDataPoint>> = journalDao.getDailyMaxHunger()
 
     suspend fun insertJournalEntry(entry: JournalEntry) = journalDao.insertEntry(entry)
     suspend fun updateAchievement(achievement: Achievement) = achievementDao.updateAchievement(achievement)

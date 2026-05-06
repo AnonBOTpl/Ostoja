@@ -16,6 +16,7 @@ Naszą misją jest wspieranie procesu zdrowienia poprzez budowanie samoświadomo
 - **Monitorowanie uczuć:** Codzienna rejestracja stanu emocjonalnego.
 - **Skala głodu:** Monitoruj intensywność głodu nałogowego (1-10).
 - **Sygnały ostrzegawcze:** Analizuj 21 kluczowych sygnałów nawrotu, aby zareagować, zanim będzie za późno.
+- **Analiza Długofalowa (Wykres):** Wizualizacja trendu najwyższego poziomu głodu każdego dnia, pomagająca dostrzec realny spadek siły nałogu wraz z upływem czasu.
 
 ### 3. System Nagród (Pokój Trofeów)
 - **Kamienie Milowe:** Wirtualne medale za utrzymanie trzeźwości (24h, 3 dni, tydzień, miesiąc, 100 dni, rok).
