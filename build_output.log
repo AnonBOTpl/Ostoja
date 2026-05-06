@@ -34,7 +34,8 @@
 > Task :app:kspDebugKotlin
 
 > Task :app:compileDebugKotlin
-w: file:///app/app/src/main/java/com/example/trzezwadroga/ui/Screens.kt:351:9 Parameter 'padding' is never used, could be renamed to _
+w: file:///app/app/src/main/java/com/example/trzezwadroga/MainActivity.kt:46:50 Unchecked cast: MainViewModel to T
+w: file:///app/app/src/main/java/com/example/trzezwadroga/ui/Screens.kt:561:9 Parameter 'padding' is never used, could be renamed to _
 
 > Task :app:compileDebugJavaWithJavac FAILED
 
@@ -45,7 +46,7 @@ Execution failed for task ':app:compileDebugJavaWithJavac'.
 > Could not resolve all files for configuration ':app:androidJdkImage'.
    > Failed to transform core-for-system-modules.jar to match attributes {artifactType=_internal_android_jdk_image, org.gradle.libraryelements=jar, org.gradle.usage=java-runtime}.
       > Execution failed for JdkImageTransform: /opt/android-sdk/platforms/android-33/core-for-system-modules.jar.
-         > Error while executing process /usr/lib/jvm/java-21-openjdk-amd64/bin/jlink with arguments {--module-path /home/jules/.gradle/caches/8.8/transforms/38f4637cde48327af3f22372d014d82f-e6a849af-a308-4e18-aef4-aa0637a5bb7b/transformed/output/temp/jmod --add-modules java.base --output /home/jules/.gradle/caches/8.8/transforms/38f4637cde48327af3f22372d014d82f-e6a849af-a308-4e18-aef4-aa0637a5bb7b/transformed/output/jdkImage --disable-plugin system-modules}
+         > Error while executing process /usr/lib/jvm/java-21-openjdk-amd64/bin/jlink with arguments {--module-path /home/jules/.gradle/caches/8.8/transforms/38f4637cde48327af3f22372d014d82f-b36c5f24-fac1-4fa2-818f-87c68da69169/transformed/output/temp/jmod --add-modules java.base --output /home/jules/.gradle/caches/8.8/transforms/38f4637cde48327af3f22372d014d82f-b36c5f24-fac1-4fa2-818f-87c68da69169/transformed/output/jdkImage --disable-plugin system-modules}
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -59,5 +60,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.8/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 15s
+BUILD FAILED in 27s
 28 actionable tasks: 4 executed, 24 up-to-date

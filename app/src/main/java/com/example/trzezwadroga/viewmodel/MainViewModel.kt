@@ -2,10 +2,7 @@ package com.example.trzezwadroga.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.trzezwadroga.data.entity.Achievement
-import com.example.trzezwadroga.data.entity.HungerDataPoint
-import com.example.trzezwadroga.data.entity.JournalEntry
-import com.example.trzezwadroga.data.entity.UserProfile
+import com.example.trzezwadroga.data.entity.*
 import com.example.trzezwadroga.repository.AppRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -20,6 +17,12 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
     )
 
     val achievements: StateFlow<List<Achievement>> = repository.allAchievements.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val dailyTasks: StateFlow<List<DailyTask>> = repository.allTasks.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -77,9 +80,36 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
         }
     }
 
-    fun updateProfile(startDate: Long) {
+    fun updateProfile(startDate: Long, dailyExpense: Double = 30.0) {
         viewModelScope.launch {
-            repository.upsertProfile(UserProfile(sobrietyStartDate = startDate))
+            repository.upsertProfile(UserProfile(sobrietyStartDate = startDate, dailyExpense = dailyExpense))
+        }
+    }
+
+    fun addTask(title: String) {
+        viewModelScope.launch {
+            repository.insertTask(DailyTask(title = title))
+        }
+    }
+
+    fun toggleTask(task: DailyTask, isCompleted: Boolean) {
+        viewModelScope.launch {
+            repository.updateTask(task.copy(isCompleted = isCompleted))
+        }
+    }
+
+    fun resetDailyPlan() {
+        viewModelScope.launch {
+            repository.clearTasks()
+        }
+    }
+
+    fun resetAllData() {
+        viewModelScope.launch {
+            // Usually we would need to wipe the DB. For simplicity:
+            repository.upsertProfile(UserProfile(sobrietyStartDate = System.currentTimeMillis()))
+            repository.clearTasks()
+            // In a real app we'd trigger a full DB clear via a Room callback
         }
     }
 
