@@ -2,10 +2,16 @@ package com.example.trzezwadroga.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import android.net.Uri
 import com.example.trzezwadroga.data.entity.*
 import com.example.trzezwadroga.repository.AppRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Calendar
 
 class MainViewModel(private val repository: AppRepository) : ViewModel() {
@@ -90,20 +96,89 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
         }
     }
 
-    fun updateMotivation(text: String, imageUri: String) {
+    fun updateMotivation(context: Context, text: String, imageUri: String?) {
         viewModelScope.launch {
+            val localPath = imageUri?.let { uriString ->
+                if (uriString.startsWith("content://")) {
+                    saveImageLocally(context, Uri.parse(uriString))
+                } else {
+                    uriString
+                }
+            } ?: ""
+
             userProfile.value?.let {
-                repository.upsertProfile(it.copy(motivationText = text, motivationImageUri = imageUri))
+                repository.upsertProfile(it.copy(motivationText = text, motivationImageUri = localPath))
             }
         }
     }
 
-    fun updateSosNumber(number: String) {
+    fun onHaltCompleted() {
         viewModelScope.launch {
+            val currentProfile = userProfile.value ?: return@launch
+            val newCount = currentProfile.haltCount + 1
+            repository.upsertProfile(currentProfile.copy(haltCount = newCount))
+
+            if (newCount >= 10) {
+                achievements.value.find { it.id == "A2" && !it.isUnlocked }?.let {
+                    repository.updateAchievement(it.copy(isUnlocked = true))
+                }
+            }
+        }
+    }
+
+    private suspend fun saveImageLocally(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            val file = File(context.filesDir, "motivation_image.jpg")
+            val outputStream = FileOutputStream(file)
+            inputStream?.copyTo(outputStream)
+            inputStream?.close()
+            outputStream.close()
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ""
+        }
+    }
+
+    fun updateSosNumber(context: Context, contactUri: Uri) {
+        viewModelScope.launch {
+            val number = fetchPhoneNumber(context, contactUri)
             userProfile.value?.let {
                 repository.upsertProfile(it.copy(sosPhoneNumber = number))
             }
         }
+    }
+
+    private suspend fun fetchPhoneNumber(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        var number = ""
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        if (cursor?.moveToFirst() == true) {
+            val idIdx = cursor.getColumnIndex(android.provider.ContactsContract.Contacts._ID)
+            val hasPhoneIdx = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.HAS_PHONE_NUMBER)
+
+            if (idIdx != -1 && hasPhoneIdx != -1) {
+                val id = cursor.getString(idIdx)
+                if (cursor.getString(hasPhoneIdx) == "1") {
+                    val phones = context.contentResolver.query(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        null,
+                        android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = " + id,
+                        null,
+                        null
+                    )
+                    if (phones?.moveToFirst() == true) {
+                        val numIdx = phones.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                        if (numIdx != -1) {
+                            number = phones.getString(numIdx)
+                        }
+                    }
+                    phones?.close()
+                }
+            }
+        }
+        cursor?.close()
+        number.ifEmpty { "112" }
     }
 
     fun addTask(title: String) {
@@ -162,6 +237,11 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
                 repository.updateAchievement(it.copy(isUnlocked = true))
             }
         }
+        if (entries.size >= 10) {
+            achievements.value.find { it.id == "A2" && !it.isUnlocked }?.let {
+                repository.updateAchievement(it.copy(isUnlocked = true))
+            }
+        }
     }
 
 
@@ -183,6 +263,7 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
                 Achievement("S5", "100 dni", "Trzycyfrowe zwycięstwo!", category = "SOBRIETY"),
                 Achievement("S6", "1 rok", "Rok pełen świadomych wyborów", category = "SOBRIETY"),
                 Achievement("A1", "Dziennikarz", "7 dni regularnych wpisów", category = "ACTIVITY"),
+                Achievement("A2", "Świadomy", "10 wykonanych testów HALT", category = "ACTIVITY"),
                 Achievement("A3", "Zwycięzca", "Użycie techniki oddechowej", category = "ACTIVITY")
             )
             repository.initAchievements(defaults)

@@ -49,20 +49,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 fun SetupWizardScreen(viewModel: MainViewModel, onComplete: () -> Unit) {
     val context = LocalContext.current
     var step by remember { mutableStateOf(1) }
-    var sobrietyCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+    var sobrietyTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
     var dailyExpense by remember { mutableStateOf("30") }
 
     fun showDateTimePicker() {
+        val calendar = Calendar.getInstance().apply { timeInMillis = sobrietyTimestamp }
         DatePickerDialog(context, { _, year, month, day ->
-            sobrietyCalendar.set(Calendar.YEAR, year)
-            sobrietyCalendar.set(Calendar.MONTH, month)
-            sobrietyCalendar.set(Calendar.DAY_OF_MONTH, day)
+            calendar.set(Calendar.YEAR, year)
+            calendar.set(Calendar.MONTH, month)
+            calendar.set(Calendar.DAY_OF_MONTH, day)
             TimePickerDialog(context, { _, hour, minute ->
-                sobrietyCalendar.set(Calendar.HOUR_OF_DAY, hour)
-                sobrietyCalendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.HOUR_OF_DAY, hour)
+                calendar.set(Calendar.MINUTE, minute)
+                sobrietyTimestamp = calendar.timeInMillis
                 step = 2
-            }, sobrietyCalendar.get(Calendar.HOUR_OF_DAY), sobrietyCalendar.get(Calendar.MINUTE), true).show()
-        }, sobrietyCalendar.get(Calendar.YEAR), sobrietyCalendar.get(Calendar.MONTH), sobrietyCalendar.get(Calendar.DAY_OF_MONTH)).show()
+            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
+        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
     }
 
     Column(
@@ -98,7 +100,7 @@ fun SetupWizardScreen(viewModel: MainViewModel, onComplete: () -> Unit) {
                 Text("Nie pijemy tylko dzisiaj. Skup się na najbliższych 24 godzinach.", style = MaterialTheme.typography.bodyLarge)
                 Spacer(modifier = Modifier.height(32.dp))
                 Button(onClick = {
-                    viewModel.updateProfile(sobrietyCalendar.timeInMillis, dailyExpense.toDoubleOrNull() ?: 30.0)
+                    viewModel.updateProfile(sobrietyTimestamp, dailyExpense.toDoubleOrNull() ?: 30.0)
                     onComplete()
                 }) { Text("Rozpocznij") }
             }
@@ -185,29 +187,16 @@ fun SettingsScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
     var showResetDialog by remember { mutableStateOf(false) }
 
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { viewModel.updateMotivation(motivation, it.toString()) }
+        uri?.let { viewModel.updateMotivation(context, motivation, it.toString()) }
     }
 
     val contactLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickContact()) { uri ->
-        uri?.let {
-            val cursor = context.contentResolver.query(it, null, null, null, null)
-            if (cursor?.moveToFirst() == true) {
-                val hasPhoneIdx = cursor.getColumnIndex(android.provider.ContactsContract.Contacts.HAS_PHONE_NUMBER)
-                val idIdx = cursor.getColumnIndex(android.provider.ContactsContract.Contacts._ID)
-                if (hasPhoneIdx != -1 && idIdx != -1) {
-                    val id = cursor.getString(idIdx)
-                    if (cursor.getString(hasPhoneIdx) == "1") {
-                        val phones = context.contentResolver.query(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI, null,
-                            android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = " + id, null, null)
-                        if (phones?.moveToFirst() == true) {
-                            val numIdx = phones.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                            if (numIdx != -1) { viewModel.updateSosNumber(phones.getString(numIdx)) }
-                        }
-                        phones?.close()
-                    }
-                }
-            }
-            cursor?.close()
+        uri?.let { viewModel.updateSosNumber(context, it) }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            contactLauncher.launch(null)
         }
     }
 
@@ -218,7 +207,7 @@ fun SettingsScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
         Text("Bank Motywacji", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(value = motivation, onValueChange = { motivation = it }, label = { Text("Twoje Dlaczego (tekst)") }, modifier = Modifier.fillMaxWidth())
         Row(modifier = Modifier.padding(top = 8.dp)) {
-            Button(onClick = { viewModel.updateMotivation(motivation, profile?.motivationImageUri ?: "") }) { Text("Zapisz tekst") }
+            Button(onClick = { viewModel.updateMotivation(context, motivation, profile?.motivationImageUri) }) { Text("Zapisz tekst") }
             Spacer(modifier = Modifier.width(8.dp))
             Button(onClick = { imageLauncher.launch("image/*") }) { Text("Wybierz zdjęcie") }
         }
@@ -226,7 +215,14 @@ fun SettingsScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
         Spacer(modifier = Modifier.height(24.dp))
         Text("Konfiguracja SOS", style = MaterialTheme.typography.titleMedium)
         Text("Aktualny numer: ${profile?.sosPhoneNumber}", style = MaterialTheme.typography.bodySmall)
-        Button(onClick = { contactLauncher.launch(null) }) { Text("Ustaw numer z kontaktów") }
+        Button(onClick = {
+            val permission = android.Manifest.permission.READ_CONTACTS
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                contactLauncher.launch(null)
+            } else {
+                permissionLauncher.launch(permission)
+            }
+        }) { Text("Ustaw numer z kontaktów") }
 
         Spacer(modifier = Modifier.height(24.dp))
         Text("Finanse", style = MaterialTheme.typography.titleMedium)
@@ -258,12 +254,16 @@ fun SettingsScreen(viewModel: MainViewModel, onNavigateBack: () -> Unit) {
 @Composable
 fun Plan24hScreen(viewModel: MainViewModel) {
     var showBreathing by remember { mutableStateOf(false) }
+    var showHalt by remember { mutableStateOf(false) }
     val tasks by viewModel.dailyTasks.collectAsState()
     var newTaskTitle by remember { mutableStateOf("") }
     val context = LocalContext.current
 
     if (showBreathing) {
         BreathingDialog(onDismiss = { showBreathing = false }, onComplete = { viewModel.onBreathingExerciseCompleted(); showBreathing = false })
+    }
+    if (showHalt) {
+        HaltDialog(onDismiss = { showHalt = false }, onComplete = { viewModel.onHaltCompleted(); showHalt = false })
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -283,7 +283,11 @@ fun Plan24hScreen(viewModel: MainViewModel) {
                 }
             }
         }
-        Button(onClick = { showBreathing = true }, modifier = Modifier.fillMaxWidth()) { Text("Technika Oddechowa") }
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { showHalt = true }, modifier = Modifier.weight(1f)) { Text("Test HALT") }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = { showBreathing = true }, modifier = Modifier.weight(1f)) { Text("Oddech") }
+        }
         Button(onClick = {
             val number = viewModel.userProfile.value?.sosPhoneNumber ?: "112"
             context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")))
@@ -593,4 +597,30 @@ fun BreathingDialog(onDismiss: () -> Unit, onComplete: () -> Unit) {
             Box(modifier = Modifier.size(100.dp).scale(scale).background(MaterialTheme.colorScheme.primary.copy(0.3f), CircleShape), contentAlignment = Alignment.Center) { Text(phase) }
         }
     }, confirmButton = { Button(onClick = onComplete) { Text("OK") } })
+}
+
+@Composable
+fun HaltDialog(onDismiss: () -> Unit, onComplete: () -> Unit) {
+    var h by remember { mutableStateOf(false) }
+    var a by remember { mutableStateOf(false) }
+    var l by remember { mutableStateOf(false) }
+    var t by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Autodiagnoza HALT") },
+        text = {
+            Column {
+                Text("Zatrzymaj się i sprawdź, czy nie jesteś:")
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(h, { h = it }); Text("Głodny/a (Hungry)") }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(a, { a = it }); Text("Zły/a (Angry)") }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(l, { l = it }); Text("Samotny/a (Lonely)") }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(t, { t = it }); Text("Zmęczony/a (Tired)") }
+                if (h || a || l || t) {
+                    Text("Zadbaj o te potrzeby, zanim podejmiesz decyzję o sięgnięciu po używkę.", style = MaterialTheme.typography.bodySmall, color = Color.Red)
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onComplete) { Text("Rozumiem") } }
+    )
 }

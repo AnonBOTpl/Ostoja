@@ -11,7 +11,7 @@ import com.example.trzezwadroga.data.entity.DailyTask
 import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.data.entity.UserProfile
 
-@Database(entities = [Achievement::class, JournalEntry::class, UserProfile::class, DailyTask::class], version = 4, exportSchema = false)
+@Database(entities = [Achievement::class, JournalEntry::class, UserProfile::class, DailyTask::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun achievementDao(): AchievementDao
     abstract fun journalDao(): JournalDao
