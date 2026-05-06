@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#B2DFDB"
+        android:pathData="M12,2L9,4v1h6V4L12,2z M11,6v3h2V6H11z M10,10v10h4V10H10z M8,21v1h8v-1H8z" />
+    <!-- Simplified Lighthouse symbol -->
+</vector>
