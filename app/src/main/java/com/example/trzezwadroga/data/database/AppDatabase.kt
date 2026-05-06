@@ -9,7 +9,7 @@ import com.example.trzezwadroga.data.entity.Achievement
 import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.data.entity.UserProfile
 
-@Database(entities = [Achievement::class, JournalEntry::class, UserProfile::class], version = 1)
+@Database(entities = [Achievement::class, JournalEntry::class, UserProfile::class], version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun achievementDao(): AchievementDao
     abstract fun journalDao(): JournalDao

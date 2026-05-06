@@ -22,9 +22,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.room.Room
 import com.example.trzezwadroga.data.database.AppDatabase
 import com.example.trzezwadroga.repository.AppRepository
+import androidx.core.content.ContextCompat
 import com.example.trzezwadroga.ui.theme.TrzeźwaDrogaTheme
 import com.example.trzezwadroga.viewmodel.MainViewModel
-import java.util.concurrent.Executors
 
 class MainActivity : FragmentActivity() {
     private lateinit var viewModel: MainViewModel
@@ -63,7 +63,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showBiometricPrompt() {
-        val executor = Executors.newSingleThreadExecutor()
+        val executor = ContextCompat.getMainExecutor(this)
         val biometricPrompt = BiometricPrompt(this, executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -135,14 +135,4 @@ fun MainScreen(viewModel: MainViewModel) {
             composable("halt") { HaltScreen() }
         }
     }
-}
-
-@Composable
-fun JournalScreen() {
-    Text("Dzienniczek - Monitorowanie uczuć, głodu (1-10) i 21 sygnałów.")
-}
-
-@Composable
-fun HaltScreen() {
-    Text("Moduł HALT & SOS - Głodny, Zły, Samotny, Zmęczony")
 }
