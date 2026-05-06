@@ -1,19 +1,36 @@
 package com.example.trzezwadroga
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.trzezwadroga.data.entity.HungerDataPoint
+import com.example.trzezwadroga.data.entity.JournalEntry
+import com.example.trzezwadroga.ui.theme.SageGreen
 import com.example.trzezwadroga.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 @Composable
 fun HomeScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
     val userProfile by viewModel.userProfile.collectAsState()
+    val trendData by viewModel.hungerTrend.collectAsState()
 
     Column(
         modifier = Modifier
@@ -26,6 +43,11 @@ fun HomeScreen(viewModel: MainViewModel) {
 
         userProfile?.let {
             val days = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - it.sobrietyStartDate)
+
+            LaunchedEffect(days) {
+                viewModel.checkSobrietyAchievements(days)
+            }
+
             Text("$days dni trzeźwości", style = MaterialTheme.typography.displayMedium)
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -47,17 +69,84 @@ fun HomeScreen(viewModel: MainViewModel) {
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Trend Poziomu Głodu", style = MaterialTheme.typography.titleMedium)
+            HungerChart(data = trendData)
+
         } ?: Button(onClick = { viewModel.updateProfile(System.currentTimeMillis()) }) {
             Text("Rozpocznij Licznik")
         }
 
         Spacer(modifier = Modifier.height(32.dp))
         Button(
-            onClick = { /* Navigate to SOS */ },
+            onClick = {
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    data = Uri.parse("tel:112")
+                }
+                context.startActivity(intent)
+            },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
         ) {
             Text("SOS - Potrzebuję wsparcia")
         }
+    }
+}
+
+@Composable
+fun HungerChart(data: List<HungerDataPoint>) {
+    if (data.isEmpty()) {
+        Box(modifier = Modifier.height(150.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text("Brak danych do wykresu", style = MaterialTheme.typography.bodySmall)
+        }
+        return
+    }
+
+    val minDate = data.first().dayDate
+    val maxDate = System.currentTimeMillis()
+    val totalDays = maxOf(1L, (maxDate - minDate) / 86400000)
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .padding(vertical = 16.dp, horizontal = 24.dp)
+    ) {
+        val width = size.width
+        val height = size.height
+
+        val xFactor = width / totalDays.toFloat()
+        val yFactor = height / 10f
+
+        val path = Path()
+        data.forEachIndexed { index, point ->
+            val relativeDay = (point.dayDate - minDate) / 86400000
+            val x = relativeDay * xFactor
+            val y = height - (point.maxHunger * yFactor)
+
+            if (index == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+
+        drawPath(
+            path = path,
+            color = SageGreen,
+            style = Stroke(width = 3.dp.toPx())
+        )
+
+        // Highlight today's potential point or the last recorded one
+        val lastPoint = data.last()
+        val lastX = ((lastPoint.dayDate - minDate) / 86400000) * xFactor
+        val lastY = height - (lastPoint.maxHunger * yFactor)
+
+        drawCircle(
+            color = SageGreen,
+            radius = 5.dp.toPx(),
+            center = androidx.compose.ui.geometry.Offset(lastX, lastY)
+        )
     }
 }
 
@@ -89,59 +178,107 @@ fun AchievementsScreen(viewModel: MainViewModel) {
 }
 
 @Composable
-fun JournalScreen() {
+fun JournalScreen(viewModel: MainViewModel) {
     var mood by remember { mutableStateOf("") }
     var hungerScale by remember { mutableStateOf(5f) }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item {
-            Text("Dzienniczek", style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
+    val allSignals = listOf(
+        "Napięcie i frustracja", "Problemy ze snem", "Nawrót do starych znajomości",
+        "Unikanie spotkań terapeutycznych", "Przekonanie o wyleczeniu", "Huśtawki nastrojów",
+        "Brak dbałości o higienę/wygląd", "Zmiana nawyków żywieniowych", "Izolacja społeczna",
+        "Szukanie winy w innych", "Defetyzm i użalanie się", "Nierealne plany",
+        "Marzenia o piciu kontrolowanym", "Agresywne zachowania", "Nuda i apatia",
+        "Pomijanie posiłków", "Zaniedbywanie hobby", "Kłamstwa i sekrety",
+        "Euforia bez powodu", "Wracanie do miejsc picia", "Odstawienie leków/witamin"
+    )
 
-            TextField(
-                value = mood,
-                onValueChange = { mood = it },
-                label = { Text("Jak się dziś czujesz?") },
-                modifier = Modifier.fillMaxWidth()
-            )
+    val selectedSignals = remember { mutableStateMapOf<String, Boolean>() }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Poziom głodu: ${hungerScale.toInt()}")
-            Slider(
-                value = hungerScale,
-                onValueChange = { hungerScale = it },
-                valueRange = 1f..10f,
-                steps = 8
-            )
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            item {
+                Text("Dzienniczek", style = MaterialTheme.typography.headlineMedium)
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Sygnały ostrzegawcze (zaznacz jeśli wystąpiły):", style = MaterialTheme.typography.titleMedium)
-        }
+                TextField(
+                    value = mood,
+                    onValueChange = { mood = it },
+                    label = { Text("Jak się dziś czujesz?") },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-        val signals = listOf(
-            "Napięcie i frustracja", "Problemy ze snem", "Nawrót do starych znajomości",
-            "Unikanie spotkań terapeutycznych", "Przekonanie o wyleczeniu", "Huśtawki nastrojów"
-        )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Poziom głodu: ${hungerScale.toInt()}")
+                Slider(
+                    value = hungerScale,
+                    onValueChange = { hungerScale = it },
+                    valueRange = 1f..10f,
+                    steps = 8
+                )
 
-        items(signals) { signal ->
-            var checked by remember { mutableStateOf(false) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = checked, onCheckedChange = { checked = it })
-                Text(signal)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Sygnały ostrzegawcze (zaznacz jeśli wystąpiły):", style = MaterialTheme.typography.titleMedium)
             }
-        }
 
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { /* Save */ }, modifier = Modifier.fillMaxWidth()) {
-                Text("Zapisz wpis")
+            items(allSignals) { signal ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = selectedSignals[signal] ?: false,
+                        onCheckedChange = { selectedSignals[signal] = it }
+                    )
+                    Text(signal)
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        val entry = JournalEntry(
+                            date = System.currentTimeMillis(),
+                            mood = mood,
+                            hungerLevel = hungerScale.toInt(),
+                            note = "",
+                            relapseSignals = selectedSignals.filter { it.value }.keys.joinToString(", ")
+                        )
+                        viewModel.addJournalEntry(entry)
+
+                        mood = ""
+                        hungerScale = 5f
+                        selectedSignals.clear()
+
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Wpis został zapisany")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Zapisz wpis")
+                }
             }
         }
     }
 }
 
 @Composable
-fun HaltScreen() {
+fun HaltScreen(viewModel: MainViewModel) {
+    var showBreathing by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    if (showBreathing) {
+        BreathingDialog(
+            onDismiss = { showBreathing = false },
+            onComplete = {
+                viewModel.onBreathingExerciseCompleted()
+                showBreathing = false
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Autodiagnoza HALT", style = MaterialTheme.typography.headlineMedium)
         Text("Sprawdź swoje podstawowe potrzeby", style = MaterialTheme.typography.bodyMedium)
@@ -157,15 +294,72 @@ fun HaltScreen() {
         Text("Jeśli na którekolwiek pytanie odpowiedziałeś TAK, zatrzymaj się i zadbaj o tę potrzebę przed podjęciem jakiejkolwiek ważnej decyzji.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
 
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = { showBreathing = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Technika Oddechowa (Kryzys)")
+        }
+
         Spacer(modifier = Modifier.weight(1f))
         Button(
-            onClick = { /* SOS Call */ },
+            onClick = {
+                viewModel.onHaltTestCompleted()
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    data = Uri.parse("tel:112")
+                }
+                context.startActivity(intent)
+            },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
         ) {
             Text("SOS - Kontakt z opiekunem")
         }
     }
+}
+
+@Composable
+fun BreathingDialog(onDismiss: () -> Unit, onComplete: () -> Unit) {
+    var phase by remember { mutableStateOf("Wdech...") }
+    val infiniteTransition = rememberInfiniteTransition(label = "breathing")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    LaunchedEffect(scale) {
+        phase = if (scale > 1.1f) "Wydech..." else "Wdech..."
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Uspokój Oddech") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .scale(scale)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(phase)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Podążaj za kręgiem przez 30 sekund.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onComplete) { Text("Zakończone") }
+        }
+    )
 }
 
 @Composable

@@ -3,6 +3,7 @@ package com.example.trzezwadroga.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.trzezwadroga.data.entity.Achievement
+import com.example.trzezwadroga.data.entity.HungerDataPoint
 import com.example.trzezwadroga.data.entity.JournalEntry
 import com.example.trzezwadroga.data.entity.UserProfile
 import com.example.trzezwadroga.repository.AppRepository
@@ -21,6 +22,12 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
     )
 
     val achievements: StateFlow<List<Achievement>> = repository.allAchievements.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val hungerTrend: StateFlow<List<HungerDataPoint>> = repository.hungerTrend.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -45,8 +52,51 @@ class MainViewModel(private val repository: AppRepository) : ViewModel() {
         }
     }
 
+    fun checkSobrietyAchievements(days: Long) {
+        viewModelScope.launch {
+            val achievementsList = achievements.value
+            val updates = mutableListOf<Achievement>()
+
+            fun unlock(id: String) {
+                achievementsList.find { it.id == id && !it.isUnlocked }?.let {
+                    updates.add(it.copy(isUnlocked = true))
+                }
+            }
+
+            if (days >= 1) unlock("S1")
+            if (days >= 3) unlock("S2")
+            if (days >= 7) unlock("S3")
+            if (days >= 30) unlock("S4")
+            if (days >= 100) unlock("S5")
+            if (days >= 365) unlock("S6")
+
+            updates.forEach { repository.updateAchievement(it) }
+        }
+    }
+
     private suspend fun checkActivityAchievements() {
-        // Logic for "Dziennikarz", "Świadomy", "Zwycięzca" would go here
+        val entries = journalEntries.value
+        if (entries.size >= 7) {
+            achievements.value.find { it.id == "A1" && !it.isUnlocked }?.let {
+                repository.updateAchievement(it.copy(isUnlocked = true))
+            }
+        }
+    }
+
+    fun onHaltTestCompleted() {
+        viewModelScope.launch {
+            achievements.value.find { it.id == "A2" && !it.isUnlocked }?.let {
+                repository.updateAchievement(it.copy(isUnlocked = true))
+            }
+        }
+    }
+
+    fun onBreathingExerciseCompleted() {
+        viewModelScope.launch {
+            achievements.value.find { it.id == "A3" && !it.isUnlocked }?.let {
+                repository.updateAchievement(it.copy(isUnlocked = true))
+            }
+        }
     }
 
     fun initDefaultAchievements() {
